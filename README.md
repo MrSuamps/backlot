@@ -76,7 +76,7 @@ no clip cap, no queue, and nothing leaving the machine.
 
 ## Requirements
 
-- Linux (tested on Ubuntu 24.04) or macOS, Python 3.10+.
+- Linux (tested on Ubuntu 24.04), macOS, or Windows 10/11 (see [Windows](#windows)), Python 3.10+.
 - A ComfyUI install (0.35 or newer; **0.38 or newer for Qwen Image 2.1**, **0.42 or newer for MOSS-Image**; YuE2 and Stable Audio 3 nodes are core since 0.38; LTX-2.5 nodes are core in 0.42; everything here was last run on 0.42.1) with these node packs in `custom_nodes/`:
   - [city96/ComfyUI-GGUF](https://github.com/city96/ComfyUI-GGUF)
   - [kijai/ComfyUI-KJNodes](https://github.com/kijai/ComfyUI-KJNodes)
@@ -133,6 +133,42 @@ Anything `start.sh` reads from the environment can be baked in, e.g.
 `PORT=8802 COMFYUI_URL=http://127.0.0.1:8189 setup/install-launcher.sh`. If the icon cannot
 start Backlot (usually because ComfyUI is not running) you get a desktop notification pointing at
 `launch.log` instead of a silent failure.
+
+### Windows
+
+PowerShell versions of the scripts sit next to the bash ones. Tested on Windows 11 with an RTX 4080 (16 GB),
+64 GB RAM and a Stability Matrix ComfyUI 0.43.2.
+
+```powershell
+git clone https://github.com/Arfolomew/backlot
+cd backlot
+
+setup\install-nodes.ps1 C:\path\to\ComfyUI              # uses ComfyUI's own venv or python_embeded
+setup\download-models.ps1 C:\path\to\ComfyUI            # required set; add -All for every optional mode
+
+.\start.ps1         # creates .venv on first run, starts the proxy on :8199 and the studio on :8801, opens it
+.\stop.ps1          # stops both (ComfyUI keeps running)
+setup\install-launcher.ps1             # optional: Desktop + Start menu shortcut (-Remove to undo)
+```
+
+If PowerShell refuses to run scripts, allow local ones once with
+`Set-ExecutionPolicy -Scope CurrentUser RemoteSigned`.
+
+Start ComfyUI with the same flags as above. In Stability Matrix, set *Cross Attention Method* to
+`--use-ck-attention` (it replaces `--use-pytorch-cross-attention`; the two cannot be combined), *Reserve VRAM*
+to `0.4`, and put `--disable-pinned-memory --fast-disk` in *Extra Launch Arguments*.
+
+Two things decide speed on Windows:
+
+- **PyTorch built for CUDA 13.** ComfyUI logs `You need pytorch with cu130 or higher to use optimized CUDA
+  operations` on a `cu128` build, and the H3 DiT's int8 layers then run on comfy-kitchen's slow eager backend.
+  Installing the `cu130` wheels of the same torch version (plus the matching cu13 build of any compiled node
+  such as nunchaku) halved sampling time: 16 s/step to 8 s/step at 864x480.
+- **Models on NVMe.** `--fast-disk` streams the 27 GB DiT from disk. Moving the models from a SATA SSD to
+  NVMe cut model staging from about 60 s to 7 s.
+
+Measured on the RTX 4080, 5 s at 864x480, text to video: 333 s on cu128 + SATA, 219 s on cu130 + NVMe, of
+which about 120 s is the Qwen3-VL text encoder on the CPU (it only reruns when the prompt changes).
 
 ## Closing the window hands the GPU back
 

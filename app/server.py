@@ -152,8 +152,9 @@ def apply_trigger_style(style, loras):
 
 
 # Mastering + quality score after a song (setup/master/, CPU, optional).
+_VENV_PY = ("Scripts", "python.exe") if os.name == "nt" else ("bin", "python")
 MASTER_PY = os.path.expanduser(os.environ.get("BACKLOT_MASTER_PY") or
-                               os.path.join(HERE, "..", "setup", "master", ".venv", "bin", "python"))
+                               os.path.join(HERE, "..", "setup", "master", ".venv", *_VENV_PY))
 MASTER_SCRIPT = os.path.join(HERE, "..", "setup", "master", "process.py")
 MASTER_LUFS = -10.0
 
@@ -202,6 +203,18 @@ for _d in (VIDEO_DIR, IMAGE_DIR, TMP_DIR):
 with open(os.path.join(HERE, "moves.json")) as _f:
     MOVES = {m["id"]: m for m in json.load(_f)["moves"]}
 PREVIEW_DIR = os.path.join(HERE, "previews")
+
+
+def _inside(path, root):
+    """True if path resolves under root. A ".." check alone misses absolute paths: os.path.join drops
+    PREVIEW_DIR for "/etc/x", and on Windows also for "C:\\x" or "\\\\host\\share"."""
+    try:
+        root = os.path.realpath(root)
+        return os.path.commonpath([os.path.realpath(path), root]) == root
+    except ValueError:   # different drives on Windows
+        return False
+
+
 # Character Swap (Oct 26 2026: masked swap, Jake's default after the viking crowd A/B). akatz's full
 # graph: SAM 3.1 masks one person and only that person is regenerated; bystanders and framing stay
 # the source's. Builder: workflows/build_relay_swap_workflow.py. ~20 min per 5 s on a 16 GB card.
@@ -749,9 +762,8 @@ class H(BaseHTTPRequestHandler):
                 out.append(d)
             return self._send(200, json.dumps({"moves": out}))
         if p.path.startswith("/previews/"):
-            rel = os.path.normpath(urllib.parse.unquote(p.path[len("/previews/"):]))
-            fp = os.path.join(PREVIEW_DIR, rel)
-            if rel.startswith("..") or not os.path.isfile(fp):
+            fp = os.path.realpath(os.path.join(PREVIEW_DIR, urllib.parse.unquote(p.path[len("/previews/"):])))
+            if not _inside(fp, PREVIEW_DIR) or not os.path.isfile(fp):
                 return self._send(404, json.dumps({"error": "not found"}))
             mime = "video/mp4" if fp.endswith(".mp4") else "image/jpeg"
             with open(fp, "rb") as f:
